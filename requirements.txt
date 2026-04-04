@@ -1,0 +1,5 @@
+fopenenv-core>=0.2.1
+fastapi
+uvicorn
+websockets
+requests
