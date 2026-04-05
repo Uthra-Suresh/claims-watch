@@ -1,0 +1,8 @@
+starlette==0.40.0
+fastapi==0.115.2
+uvicorn==0.30.0
+pydantic==2.7.1
+openai>=1.40.0
+requests==2.32.3
+PyYAML==6.0.1
+python-dotenv>=1.0.0
