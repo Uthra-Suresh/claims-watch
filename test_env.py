@@ -156,11 +156,11 @@ def test_environment_episodes() -> None:
 # ── Test 4: Mid-Episode Mechanics ────────────────────────────────────────────
 
 def test_mid_episode_mechanics() -> None:
-    """Policy update fires at step 155 (Task 2)."""
+    """Policy update fires at step 30 (Task 2)."""
     env = ClaimWatchEnv()
 
     obs = env.reset(task_id=2, seed=42)
-    for i in range(155):
+    for i in range(30):
         if not obs.queue:
             break
         claim = obs.queue[0]
@@ -171,7 +171,7 @@ def test_mid_episode_mechanics() -> None:
             break
 
     state = env.state()
-    _assert(state["policy_update_fired"], "Policy update should have fired by step 155")
+    _assert(state["policy_update_fired"], "Policy update should have fired by step 30")
 
     print("  ✓ test_mid_episode_mechanics passed")
 

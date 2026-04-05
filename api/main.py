@@ -1,15 +1,13 @@
 """ClaimWatch — FastAPI application: /reset /step /state /tasks /health.
 
 OpenEnv-compliant RL environment for insurance claims triage.
-Supports both POST and GET on /reset and /step for ease of use.
-Interactive API docs available at /docs (Swagger UI) and /redoc (ReDoc).
-"""
+Interactive API docs available at /docs (Swagger UI) and /redoc (ReDoc)."""
 
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -27,7 +25,7 @@ daily operations of an insurance company's claims intake triage team.
 
 ### Quick Start
 
-1. **Reset** the environment: `POST /reset` (or `GET /reset`)
+1. **Reset** the environment: `POST /reset`
 2. **Step** through claims: `POST /step` with a claim\_id and decision
 3. **Check state**: `GET /state`
 
@@ -46,9 +44,9 @@ daily operations of an insurance company's claims intake triage team.
 
 | ID | Name | Difficulty | Claims |
 |----|------|------------|--------|
-| 1 | routine_triage | easy | 50 |
-| 2 | multi_hospital_triage | medium | 300 |
-| 3 | full_complexity | hard | 1000 |
+| 1 | routine_triage | easy | 30 |
+| 2 | multi_hospital_triage | medium | 50 |
+| 3 | full_complexity | hard | 100 |
 """
 
 app = FastAPI(
@@ -163,23 +161,6 @@ def reset_post(body: ResetRequest = ResetRequest()):
     return _do_reset(task_id=body.task_id, seed=body.seed, n_claims=body.n_claims)
 
 
-@app.get(
-    "/reset",
-    tags=["Environment"],
-    summary="Reset the environment (GET)",
-    response_description="Observation after reset",
-)
-def reset_get(
-    task_id: int = Query(1, description="Task ID (1=easy, 2=medium, 3=hard)", ge=1, le=3),
-    seed: int = Query(42, description="Random seed for reproducibility"),
-):
-    """Reset the environment via GET with query parameters.
-
-    Example: `GET /reset?task_id=2&seed=42`
-    """
-    return _do_reset(task_id=task_id, seed=seed)
-
-
 @app.post(
     "/step",
     tags=["Environment"],
@@ -195,25 +176,6 @@ def step_post(body: StepRequest):
     When `done=True`, `info.grader_result` contains the final score.
     """
     return _do_step(claim_id=body.claim_id, decision=body.decision, rationale=body.rationale)
-
-
-@app.get(
-    "/step",
-    tags=["Environment"],
-    summary="Submit one triage action (GET)",
-    response_model=StepResponse,
-    response_description="Observation, reward, done flag, and info",
-)
-def step_get(
-    claim_id: str = Query(..., description="Claim ID to act on"),
-    decision: RoutingDecision = Query(..., description="Routing decision"),
-    rationale: Optional[str] = Query(None, description="Optional rationale"),
-):
-    """Submit one routing decision via GET with query parameters.
-
-    Example: `GET /step?claim_id=CLM-42-00003&decision=clinical_review`
-    """
-    return _do_step(claim_id=claim_id, decision=decision, rationale=rationale)
 
 
 @app.get(
