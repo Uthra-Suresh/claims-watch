@@ -238,3 +238,16 @@ def root():
         "docs": "/docs",
         "endpoints": ["/reset", "/step", "/state", "/tasks", "/health", "/docs", "/redoc"],
     }
+
+def main() -> Any:
+    """Return the ASGI app for runners/validators to import as ``server.app:main``.
+
+    Returns the FastAPI `app` instance.
+    """
+    return app
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(main(), host="0.0.0.0", port=8000)
