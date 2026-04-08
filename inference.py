@@ -581,16 +581,16 @@ def run_task(client: OpenAI, task_id: int, n_claims: Optional[int] = None) -> Di
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="ClaimWatch inference agent")
-    p.add_argument("--easy", action="store_true", help="Run task 1 (easy, 30 claims)")
-    p.add_argument("--medium", action="store_true", help="Run task 2 (medium, 50 claims)")
-    p.add_argument("--hard", action="store_true", help="Run task 3 (hard, 100 claims)")
+    p.add_argument("--easy", action="store_true", help="Run task 1 (easy, 20 claims)")
+    p.add_argument("--medium", action="store_true", help="Run task 2 (medium, 30 claims)")
+    p.add_argument("--hard", action="store_true", help="Run task 3 (hard, 50 claims)")
     p.add_argument("--n-claims", type=int, default=None, help="Override claim count for all tasks")
     p.add_argument("--debug", action="store_true", help="Enable verbose debug output")
     return p.parse_args()
 
 
 def main() -> None:
-    """Run selected tasks (default: all 3 → 180 claims total)."""
+    """Run selected tasks (default: all 3 -> 100 claims total)."""
     global DEBUG
     global ENV_BASE_URL
 
@@ -608,7 +608,7 @@ def main() -> None:
     if args.hard:
         task_ids.append(3)
     if not task_ids:
-        task_ids = [1, 2, 3]  # default: all tasks = 30 + 50 + 100 = 180 claims
+        task_ids = [1, 2, 3]  # default: all tasks = 20 + 30 + 50 = 100 claims
 
     if args.n_claims is not None:
         log(f"Overriding claim count → {args.n_claims} per task")

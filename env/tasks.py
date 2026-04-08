@@ -29,7 +29,7 @@ TASKS: Dict[int, TaskConfig] = {
         task_id=1,
         name="routine_triage",
         difficulty="easy",
-        n_claims=30,
+        n_claims=20,
         n_hospitals=10,
         fraud_rate=0.06,
         md_slots_per_day=20,
@@ -41,7 +41,7 @@ TASKS: Dict[int, TaskConfig] = {
         task_id=2,
         name="multi_hospital_triage",
         difficulty="medium",
-        n_claims=50,
+        n_claims=30,
         n_hospitals=50,
         fraud_rate=0.08,
         md_slots_per_day=8,
@@ -53,7 +53,7 @@ TASKS: Dict[int, TaskConfig] = {
         task_id=3,
         name="full_complexity",
         difficulty="hard",
-        n_claims=100,
+        n_claims=50,
         n_hospitals=200,
         fraud_rate=0.10,
         md_slots_per_day=4,
@@ -134,8 +134,20 @@ def _base_metrics(
     }
 
 
+_SCORE_EPSILON = 1e-6
+
+
 def _clamp(val: float, lo: float = 0.0, hi: float = 1.0) -> float:
-    return max(lo, min(hi, val))
+    """Clamp scores into the validator's required open interval."""
+    clamped = max(lo, min(hi, val))
+
+    if lo == 0.0 and hi == 1.0:
+        if clamped <= lo:
+            return _SCORE_EPSILON
+        if clamped >= hi:
+            return hi - _SCORE_EPSILON
+
+    return clamped
 
 
 # ── Grader functions ─────────────────────────────────────────────────────────
