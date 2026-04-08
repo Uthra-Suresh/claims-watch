@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 import websocket
+from urllib.parse import urlparse
 from openai import OpenAI
 
 import requests
@@ -51,7 +52,6 @@ HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("API_KEY", "")
 
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:7860")
 BENCHMARK = "claimwatch"
-SUCCESS_THRESHOLD = 0.40
 
 # ── Runtime flags (set by parse_args) ────────────────────────────────────────
 DEBUG = False
@@ -109,33 +109,148 @@ You must respond with valid JSON containing:
 
 Always prioritise claims with the lowest SLA remaining hours first."""
 
+# ── WebSocket helpers ────────────────────────────────────────────────────────
 
-# ── HTTP helpers ─────────────────────────────────────────────────────────────
+def build_ws_url(env_base_url: str) -> str:
+    """Convert ENV_BASE_URL into the OpenEnv WebSocket endpoint."""
+    base = normalize_env_base_url(env_base_url).rstrip("/")
 
-def env_reset(task_id: int = 1, seed: int = 42, n_claims: Optional[int] = None) -> Dict[str, Any]:
-    """POST /reset to the environment."""
+    if base.startswith("http://"):
+        ws_base = "ws://" + base[len("http://"):]
+    elif base.startswith("https://"):
+        ws_base = "wss://" + base[len("https://"):]
+    elif base.startswith(("ws://", "wss://")):
+        ws_base = base
+    else:
+        ws_base = "ws://" + base
+
+    return f"{ws_base}/ws"
+
+
+def env_connect() -> websocket.WebSocket:
+    """Open a persistent WebSocket session to the environment."""
+    ws_url = build_ws_url(ENV_BASE_URL)
+    debug(f"Connecting to environment WebSocket: {ws_url}")
+    return websocket.create_connection(ws_url, timeout=30)
+
+
+def _ws_send_and_receive(session: websocket.WebSocket, message: Dict[str, Any]) -> Dict[str, Any]:
+    """Send one WebSocket message and return the inner OpenEnv response payload."""
+    session.send(json.dumps(message))
+
+    raw = session.recv()
+    debug(f"WS recv: {raw}")
+    response = json.loads(raw)
+
+    response_type = response.get("type")
+    if response_type == "error":
+        data = response.get("data", {})
+        raise RuntimeError(
+            f"Server error: {data.get('message', 'Unknown error')} "
+            f"(code: {data.get('code', 'UNKNOWN')})"
+        )
+
+    if response_type not in {"observation", "state"}:
+        raise RuntimeError(f"Unexpected WS response type: {response_type!r}")
+
+    return response.get("data", {})
+
+
+def env_reset(
+    session: websocket.WebSocket,
+    task_id: int = 1,
+    seed: int = 42,
+    n_claims: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Reset the environment over the active WebSocket session."""
     body: Dict[str, Any] = {"task_id": task_id, "seed": seed}
     if n_claims is not None:
         body["n_claims"] = n_claims
-    resp = requests.post(f"{ENV_BASE_URL}/reset", json=body, timeout=30)
-    resp.raise_for_status()
-    return resp.json()
 
-
-def env_step(claim_id: str, decision: str, rationale: str = "") -> Dict[str, Any]:
-    """POST /step to the environment."""
-    resp = requests.post(
-        f"{ENV_BASE_URL}/step",
-        json={"claim_id": claim_id, "decision": decision, "rationale": rationale},
-        timeout=30,
+    return _ws_send_and_receive(
+        session,
+        {
+            "type": "reset",
+            "data": body,
+        },
     )
-    if resp.status_code == 422:
-        raise requests.HTTPError(
-            f"422 Unprocessable Entity for {resp.url}: {resp.text}",
-            response=resp,
-        )
-    resp.raise_for_status()
-    return resp.json()
+
+
+def env_step(
+    session: websocket.WebSocket,
+    claim_id: str,
+    decision: str,
+    rationale: str = "",
+) -> Dict[str, Any]:
+    """Execute one step over the active WebSocket session."""
+    return _ws_send_and_receive(
+        session,
+        {
+            "type": "step",
+            "data": {
+                "claim_id": claim_id,
+                "decision": decision,
+                "rationale": rationale,
+            },
+        },
+    )
+
+
+def env_state(session: websocket.WebSocket) -> Dict[str, Any]:
+    """Request the current environment state over WebSocket."""
+    return _ws_send_and_receive(
+        session,
+        {
+            "type": "state",
+        },
+    )
+
+
+def env_close(session: Optional[websocket.WebSocket]) -> None:
+    """Close the active WebSocket session."""
+    if session is None:
+        return
+
+    try:
+        session.send(json.dumps({"type": "close"}))
+    except Exception:
+        pass
+
+    try:
+        session.close()
+    except Exception:
+        pass
+# ── HTTP helpers ─────────────────────────────────────────────────────────────
+
+# def env_reset(task_id: int = 1, seed: int = 42, n_claims: Optional[int] = None) -> Dict[str, Any]:
+#     """POST /reset to the environment."""
+#     body: Dict[str, Any] = {"task_id": task_id, "seed": seed}
+#     if n_claims is not None:
+#         body["n_claims"] = n_claims
+#     resp = requests.post(f"{ENV_BASE_URL}/reset", json=body, timeout=30)
+#     resp.raise_for_status()
+#     return resp.json()
+
+# def env_step(claim_id: str, decision: str, rationale: str = "") -> Dict[str, Any]:
+#     """POST /step to the environment."""
+#     resp = requests.post(
+#             f"{ENV_BASE_URL}/step",
+#         json={
+#             # "action": {
+#                 "claim_id": claim_id,
+#                 "decision": decision,
+#                 "rationale": rationale,
+#             # }
+#         },
+#         timeout=30,
+#     )
+#     if resp.status_code == 422:
+#         raise requests.HTTPError(
+#             f"422 Unprocessable Entity for {resp.url}: {resp.text}",
+#             response=resp,
+#         )
+#     resp.raise_for_status()
+#     return resp.json()
 
 
 # ── Observation helpers ───────────────────────────────────────────────────────
@@ -384,84 +499,82 @@ def _dbg_state(obs: Dict[str, Any]) -> str:
 def run_task(client: OpenAI, task_id: int, n_claims: Optional[int] = None) -> Dict[str, Any]:
     """Run a single task and return the result."""
     log_start(task_id)
+    session = env_connect()
+    try:
+        reset_result = env_reset(session, task_id=task_id, seed=42, n_claims=n_claims)
+        obs = unwrap_obs(reset_result, {})
 
-    reset_result = env_reset(task_id=task_id, seed=42, n_claims=n_claims)
-    obs = unwrap_obs(reset_result, {})
+        total_claims = obs.get("total_claims_in_episode", n_claims or 0)
+        max_steps = int(total_claims) if total_claims else len(obs.get("queue", []))
 
-    total_claims = obs.get("total_claims_in_episode", n_claims or 0)
-    max_steps = int(total_claims) if total_claims else len(obs.get("queue", []))
-    log(f"  claims={total_claims} max_steps={max_steps}")
+        rewards: List[float] = []
+        step_count = 0
+        completed_episode = False
 
-    rewards: List[float] = []
-    step_count = 0
-    final_score: Optional[float] = None
+        for n in range(1, max_steps + 1):
+            queue = obs.get("queue", [])
+            if not queue:
+                debug(f"Step {n}: empty queue — episode complete")
+                completed_episode = True
+                break
 
-    for n in range(1, max_steps + 1):
-        queue = obs.get("queue", [])
-        if not queue:
-            debug(f"Step {n}: empty queue — episode complete")
-            break
+            debug(f"--- step {n}/{max_steps} ---")
+            debug(_dbg_state(obs))
+            for c in queue[:3]:
+                debug(_dbg_claim(c))
 
-        debug(f"--- step {n}/{max_steps} ---")
-        debug(_dbg_state(obs))
-        for c in queue[:3]:
-            debug(_dbg_claim(c))
+            prompt = build_claim_prompt(obs)
+            parsed = call_llm(client, prompt)
 
-        prompt = build_claim_prompt(obs)
-        parsed = call_llm(client, prompt)
+            if parsed is None or "claim_id" not in parsed or "decision" not in parsed:
+                parsed = fallback_heuristic(obs)
+                debug(f"Step {n}: LLM failed → fallback heuristic")
+            else:
+                parsed = validate_action(obs, parsed)
 
-        if parsed is None or "claim_id" not in parsed or "decision" not in parsed:
-            parsed = fallback_heuristic(obs)
-            debug(f"Step {n}: LLM failed → fallback heuristic")
-        else:
-            parsed = validate_action(obs, parsed)
-
-        if parsed is None:
-            parsed = fallback_heuristic(obs)
             if parsed is None:
-                log(f"[STEP] step={n} action=noop(claim=none) reward=0.00 done=false error=fallback_failed")
-                break
+                parsed = fallback_heuristic(obs)
+                if parsed is None:
+                    log(f"[STEP] step={n} action=noop(claim=none) reward=0.00 done=false error=fallback_failed")
+                    break
 
-        claim_id = parsed["claim_id"]
-        decision = parsed["decision"]
-        rationale = parsed.get("rationale", "")
-        step_error: Optional[str] = None
+            claim_id = parsed["claim_id"]
+            decision = parsed["decision"]
+            rationale = parsed.get("rationale", "")
+            step_error: Optional[str] = None
 
-        try:
-            result = env_step(claim_id, decision, rationale)
-            obs = unwrap_obs(result, obs)
-            reward_val = get_reward(result, obs)
-            done = get_done(result, obs)
-            rewards.append(reward_val)
-            step_count = n
+            try:
+                result = env_step(session, claim_id, decision, rationale)
+                obs = unwrap_obs(result, obs)
+                reward_val = get_reward(result, obs)
+                done = get_done(result, obs)
+                rewards.append(reward_val)
+                step_count = n
 
-            log_step(n, decision, claim_id, reward_val, done, step_error)
-            log(f"  {_dbg_reward(reward_val, obs)}")
+                log_step(n, decision, claim_id, reward_val, done, step_error)
+                log(f"  {_dbg_reward(reward_val, obs)}")
 
-            if done:
-                final_score = get_grader_score(obs)
-                break
+                if done:
+                    completed_episode = True
+                    break
 
-        except Exception as e:
-            step_error = str(e)
-            log_step(n, decision, claim_id, 0.0, False, step_error)
-            rewards.append(0.0)
-            step_count = n
-    else:
-        # Loop exhausted max_steps without done signal
-        log(f"  WARNING: reached max_steps={max_steps} without done signal")
+            except Exception as e:
+                step_error = str(e)
+                log_step(n, decision, claim_id, 0.0, False, step_error)
+                rewards.append(0.0)
+                step_count = n
+        else:
+            # Loop exhausted max_steps without done signal
+            log(f"  WARNING: reached max_steps={max_steps} without done signal")
 
-    # Compute final score
-    if final_score is None:
-        # Try cumulative_reward as a proxy if grader didn't fire
-        cumulative = obs.get("cumulative_reward", 0.0)
-        final_score = max(0.0, min(1.0, cumulative)) if cumulative else 0.0
+        final_score = sum(rewards) / len(rewards) if rewards else 0.0
+        final_score = max(0.0, min(1.0, final_score))
+        success = completed_episode
 
-    final_score = max(0.0, min(1.0, final_score))
-    success = final_score >= SUCCESS_THRESHOLD
-
-    log_end(success, step_count, final_score, rewards)
-    return {"task_id": task_id, "score": final_score, "steps": step_count, "success": success}
+        log_end(success, step_count, final_score, rewards)
+        return {"task_id": task_id, "score": final_score, "steps": step_count, "success": success}
+    finally:
+        env_close(session)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -518,23 +631,6 @@ def main() -> None:
     for r in results:
         debug(f"  Task {r['task_id']}: score={r['score']:.3f} steps={r['steps']} success={r['success']}")
     debug(f"  Average score: {avg_score:.3f}")
-
-    # Write results JSON for reproducibility (matches reference pattern)
-    output = {
-        "model": MODEL_NAME,
-        "api_base_url": API_BASE_URL,
-        "env_base_url": ENV_BASE_URL,
-        "elapsed_seconds": round(elapsed, 2),
-        "average_score": round(avg_score, 4),
-        "task_results": [
-            {"task_id": r["task_id"], "score": round(r["score"], 4), "steps": r["steps"]}
-            for r in results
-        ],
-    }
-    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "baseline_results.json")
-    with open(out_path, "w") as f:
-        json.dump(output, f, indent=2)
-    log(f"Results written to {out_path}")
 
 
 if __name__ == "__main__":
