@@ -6,9 +6,9 @@ observation_type: structured_json
 action_type: structured_json
 reward_range: [-1.0, 1.0]
 tasks:
-  - {id: 1, name: routine_triage,         difficulty: easy,   n_claims: 30}
-  - {id: 2, name: multi_hospital_triage,  difficulty: medium, n_claims: 50}
-  - {id: 3, name: full_complexity,        difficulty: hard,   n_claims: 100}
+  - {id: 1, name: routine_triage,         difficulty: easy,   n_claims: 20}
+  - {id: 2, name: multi_hospital_triage,  difficulty: medium, n_claims: 30}
+  - {id: 3, name: full_complexity,        difficulty: hard,   n_claims: 50}
 api:
   reset: {method: POST, path: /reset}
   step:  {method: POST, path: /step}

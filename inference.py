@@ -483,10 +483,6 @@ def _dbg_claim(claim: Dict[str, Any]) -> str:
     )
 
 
-def _dbg_reward(reward_val: float, obs: Dict[str, Any]) -> str:
-    return f"reward={reward_val:.2f} cumulative={obs.get('cumulative_reward', 0.0):.2f}"
-
-
 def _dbg_state(obs: Dict[str, Any]) -> str:
     return (
         f"  queue={len(obs.get('queue', []))} md={obs.get('md_slots_remaining', '?')} "
@@ -552,7 +548,6 @@ def run_task(client: OpenAI, task_id: int, n_claims: Optional[int] = None) -> Di
                 step_count = n
 
                 log_step(n, decision, claim_id, reward_val, done, step_error)
-                log(f"  {_dbg_reward(reward_val, obs)}")
 
                 if done:
                     completed_episode = True
@@ -581,16 +576,16 @@ def run_task(client: OpenAI, task_id: int, n_claims: Optional[int] = None) -> Di
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="ClaimWatch inference agent")
-    p.add_argument("--easy", action="store_true", help="Run task 1 (easy, 30 claims)")
-    p.add_argument("--medium", action="store_true", help="Run task 2 (medium, 50 claims)")
-    p.add_argument("--hard", action="store_true", help="Run task 3 (hard, 100 claims)")
+    p.add_argument("--easy", action="store_true", help="Run task 1 (easy, 20 claims)")
+    p.add_argument("--medium", action="store_true", help="Run task 2 (medium, 30 claims)")
+    p.add_argument("--hard", action="store_true", help="Run task 3 (hard, 50 claims)")
     p.add_argument("--n-claims", type=int, default=None, help="Override claim count for all tasks")
     p.add_argument("--debug", action="store_true", help="Enable verbose debug output")
     return p.parse_args()
 
 
 def main() -> None:
-    """Run selected tasks (default: all 3 → 180 claims total)."""
+    """Run selected tasks (default: all 3 -> 100 claims total)."""
     global DEBUG
     global ENV_BASE_URL
 
@@ -608,7 +603,7 @@ def main() -> None:
     if args.hard:
         task_ids.append(3)
     if not task_ids:
-        task_ids = [1, 2, 3]  # default: all tasks = 30 + 50 + 100 = 180 claims
+        task_ids = [1, 2, 3]  # default: all tasks = 20 + 30 + 50 = 100 claims
 
     if args.n_claims is not None:
         log(f"Overriding claim count → {args.n_claims} per task")

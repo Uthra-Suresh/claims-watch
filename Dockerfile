@@ -30,6 +30,7 @@ COPY env/ ./env/
 COPY server/ ./server/
 COPY inference.py .
 COPY openenv.yaml .
+COPY gradio_readme.md .
 
 FROM ${BASE_IMAGE}
 
@@ -40,6 +41,7 @@ COPY --from=builder /app/env ./env/
 COPY --from=builder /app/server ./server/
 COPY --from=builder /app/inference.py .
 COPY --from=builder /app/openenv.yaml .
+COPY --from=builder /app/gradio_readme.md ./README.md
 
 RUN mkdir -p /app/logs && chmod 777 /app/logs
 

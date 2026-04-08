@@ -37,9 +37,9 @@ daily operations of an insurance company's claims intake triage team.
 
 | ID | Name | Difficulty | Claims |
 |----|------|------------|--------|
-| 1 | routine_triage | easy | 30 |
-| 2 | multi_hospital_triage | medium | 50 |
-| 3 | full_complexity | hard | 100 |
+| 1 | routine_triage | easy | 20 |
+| 2 | multi_hospital_triage | medium | 30 |
+| 3 | full_complexity | hard | 50 |
 """
 
 app = create_app(ClaimWatchEnv, ClaimAction, ClaimObservation, env_name="claims_watch")
