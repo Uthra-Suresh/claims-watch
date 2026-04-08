@@ -16,6 +16,7 @@ node_modules/
 .pytest_cache/
 *.md
 !README.md
+!gradio_readme.md
 ./envs/*
 
 
