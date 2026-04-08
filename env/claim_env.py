@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import random as _random_module
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
+from openenv.core.env_server.interfaces import Environment
 
 from .models import (
-    Action,
+    ClaimAction,
     Claim,
     ClaimSnapshot,
+    ClaimState,
     ClaimStatus,
-    Observation,
+    ClaimObservation,
     Reward,
     RoutingDecision,
     SLA_HOURS,
@@ -23,10 +25,11 @@ from .reward import compute_reward
 from .tasks import TASKS, TaskConfig, GRADERS, grade_task3
 
 
-class ClaimWatchEnv:
+class ClaimWatchEnv(Environment):
     """OpenEnv-compliant RL environment for insurance claims triage."""
 
     def __init__(self) -> None:
+        super().__init__()
         self._task_config: Optional[TaskConfig] = None
         self._claims: List[Claim] = []
         self._claims_by_id: Dict[str, Claim] = {}
@@ -52,7 +55,7 @@ class ClaimWatchEnv:
 
     # ── Reset ────────────────────────────────────────────────────────────
 
-    def reset(self, task_id: int = 1, seed: int = 42, n_claims: Optional[int] = None) -> Observation:
+    def reset(self, seed: int = 42, episode_id: Optional[str] = None, task_id: int = 1, n_claims: Optional[int] = None, **kwargs: Any) -> ClaimObservation:
         """Initialize a new episode."""
         if task_id not in TASKS:
             raise ValueError(f"Unknown task_id: {task_id}")
@@ -94,7 +97,7 @@ class ClaimWatchEnv:
 
     # ── Step ─────────────────────────────────────────────────────────────
 
-    def step(self, action: Action) -> Tuple[Observation, Reward, bool, Dict[str, Any]]:
+    def step(self, action: ClaimAction, timeout_s: Optional[float] = None, **kwargs: Any) -> ClaimObservation:
         """Process one agent action."""
         if self._done:
             raise RuntimeError("Episode is done. Call reset() first.")
@@ -103,7 +106,6 @@ class ClaimWatchEnv:
         assert cfg is not None
 
         self._step_number += 1
-        info: Dict[str, Any] = {}
 
         # Fire mid-episode mechanics
         self._check_policy_update()
@@ -116,10 +118,12 @@ class ClaimWatchEnv:
             self._cumulative_reward += reward.total
             self._advance_clock()
             done = self._check_done()
-            if done:
-                info["grader_result"] = self._run_grader()
             obs = self._build_observation()
-            return obs, reward, done, info
+            obs.done = done
+            obs.reward = reward.total
+            if done:
+                obs.metadata["grader_result"] = self._run_grader()
+            return obs
 
         decision = action.decision
 
@@ -153,36 +157,42 @@ class ClaimWatchEnv:
 
         # Check done
         done = self._check_done()
-        if done:
-            info["grader_result"] = self._run_grader()
-
         obs = self._build_observation()
-        return obs, reward, done, info
+        obs.done = done
+        obs.reward = reward.total
+        if done:
+            obs.metadata["grader_result"] = self._run_grader()
+        return obs
 
     # ── State ────────────────────────────────────────────────────────────
 
-    def state(self) -> Dict[str, Any]:
+    @property
+    def state(self) -> ClaimState:
         """Return full environment state for validation."""
-        return {
-            "task_id": self._task_id,
-            "seed": self._seed,
-            "step_number": self._step_number,
-            "current_day": self._current_day,
-            "current_hour": self._current_hour,
-            "total_claims": len(self._claims),
-            "pending_count": len(self._pending_ids),
-            "decided_count": len(self._decisions),
-            "md_slots_remaining": self._md_slots_remaining,
-            "clinical_slots_remaining": self._clinical_slots_remaining,
-            "policy_update_fired": self._policy_update_fired,
-            "done": self._done,
-            "reward_history_len": len(self._reward_history),
-            "cumulative_reward": self._cumulative_reward,
-        }
+        return ClaimState(
+            task_id=self._task_id,
+            seed=self._seed,
+            step_count=self._step_number,
+            step_number=self._step_number,
+            current_day=self._current_day,
+            current_hour=self._current_hour,
+            total_claims=len(self._claims),
+            pending_count=len(self._pending_ids),
+            decided_count=len(self._decisions),
+            md_slots_remaining=self._md_slots_remaining,
+            clinical_slots_remaining=self._clinical_slots_remaining,
+            policy_update_fired=self._policy_update_fired,
+            is_done=self._done,
+            cumulative_reward=self._cumulative_reward,
+        )
+
+    def close(self) -> None:
+        """Clean up environment resources."""
+        self._done = True
 
     # ── Internal helpers ─────────────────────────────────────────────────
 
-    def _build_observation(self) -> Observation:
+    def _build_observation(self) -> ClaimObservation:
         """Build the agent-visible observation."""
         cfg = self._task_config
         # Sort by SLA remaining (ascending) then billed amount (descending)
@@ -197,7 +207,7 @@ class ClaimWatchEnv:
         visible = pending_claims[:50]
         queue = [claim_to_snapshot(c, current_hr=abs_hr) for c in visible]
 
-        return Observation(
+        return ClaimObservation(
             current_hour=self._current_hour,
             current_day=self._current_day,
             queue=queue,

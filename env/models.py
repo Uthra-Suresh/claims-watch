@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional
-
+from typing import Any, Dict, List, Optional
+from openenv.core.env_server.types import Action, Observation, State
 from pydantic import BaseModel, Field
 
 
@@ -30,7 +30,7 @@ class ClaimStatus(str, Enum):
 
 
 class SLATier(str, Enum):
-    routine = "routine"      # 24 hours
+    routine = "routine"      # 24 hoursAac
     critical = "critical"    # 12 hours
     urgent = "urgent"        # 3 hours
 
@@ -130,7 +130,7 @@ def claim_to_snapshot(claim: Claim, current_hr: int = 0) -> ClaimSnapshot:
 
 # ── Observation ──────────────────────────────────────────────────────────────
 
-class Observation(BaseModel):
+class ClaimObservation(Observation):
     current_hour: int = 0
     current_day: int = 0
     queue: List[ClaimSnapshot] = Field(default_factory=list)
@@ -145,10 +145,22 @@ class Observation(BaseModel):
 
 # ── Action ───────────────────────────────────────────────────────────────────
 
-class Action(BaseModel):
-    claim_id: str
-    decision: RoutingDecision
-    rationale: Optional[str] = None
+class ClaimAction(Action):
+    claim_id: str = Field(
+        default="",
+        description="The claim_id from the observation queue to route.",
+    )
+    decision: RoutingDecision = Field(
+        default=RoutingDecision.clinical_review,
+        description=(
+            "Routing decision: auto_approve, clinical_review, md_review, "
+            "request_info, deny, flag_fraud."
+        ),
+    )
+    rationale: Optional[str] = Field(
+        default=None,
+        description="Optional reasoning for the decision.",
+    )
 
 
 # ── Reward ───────────────────────────────────────────────────────────────────
@@ -179,3 +191,24 @@ class Reward(BaseModel):
         ]:
             kwargs.setdefault(field_name, 0.0)
         super().__init__(**kwargs)
+
+
+# ── State ────────────────────────────────────────────────────────────────────
+
+class ClaimState(State):
+    """Internal environment state exposed via the state property."""
+
+    task_id: int = 1
+    seed: int = 42
+    step_number: int = 0
+    current_day: int = 0
+    current_hour: int = 8
+    total_claims: int = 0
+    pending_count: int = 0
+    decided_count: int = 0
+    md_slots_remaining: int = 0
+    clinical_slots_remaining: int = 0
+    policy_update_fired: bool = False
+    is_done: bool = False
+    cumulative_reward: float = 0.0
+
