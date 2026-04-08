@@ -9,7 +9,7 @@ tags:
   - openenv
 pinned: false
 license: mit
-short_description: Insurance claims triage RL environment for routing, SLA, and fraud decisions
+short_description: RL environment for insurance claims triage
 ---
 
 # ClaimWatch
