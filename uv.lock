@@ -162,6 +162,7 @@ dependencies = [
     { name = "requests" },
     { name = "starlette" },
     { name = "uvicorn" },
+    { name = "websocket-client" },
 ]
 
 [package.metadata]
@@ -175,6 +176,7 @@ requires-dist = [
     { name = "requests", specifier = "==2.32.3" },
     { name = "starlette", specifier = "==0.40.0" },
     { name = "uvicorn", specifier = "==0.30.0" },
+    { name = "websocket-client", specifier = ">=1.9.0" },
 ]
 
 [[package]]
@@ -816,6 +818,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d3/f7/4ad826703a49b320a4adf2470fdd2a3481ea13f4460cb615ad12c75be003/uvicorn-0.30.0.tar.gz", hash = "sha256:f678dec4fa3a39706bbf49b9ec5fc40049d42418716cea52b53f07828a60aa37", size = 42560, upload-time = "2024-05-28T07:20:42.231Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/a1/d57e38417a8dabb22df02b6aebc209dc73485792e6c5620e501547133d0b/uvicorn-0.30.0-py3-none-any.whl", hash = "sha256:78fa0b5f56abb8562024a59041caeb555c86e48d0efdd23c3fe7de7a4075bdab", size = 62388, upload-time = "2024-05-28T07:20:38.256Z" },
+]
+
+[[package]]
+name = "websocket-client"
+version = "1.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2c/41/aa4bf9664e4cda14c3b39865b12251e8e7d239f4cd0e3cc1b6c2ccde25c1/websocket_client-1.9.0.tar.gz", hash = "sha256:9e813624b6eb619999a97dc7958469217c3176312b3a16a4bd1bc7e08a46ec98", size = 70576, upload-time = "2025-10-07T21:16:36.495Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/34/db/b10e48aa8fff7407e67470363eac595018441cf32d5e1001567a7aeba5d2/websocket_client-1.9.0-py3-none-any.whl", hash = "sha256:af248a825037ef591efbf6ed20cc5faa03d3b47b9e5a2230a529eeee1c1fc3ef", size = 82616, upload-time = "2025-10-07T21:16:34.951Z" },
 ]
 
 [[package]]

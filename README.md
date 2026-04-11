@@ -313,6 +313,35 @@ Expected log shape:
 
 Note: the baseline script currently reports `score` as average per-step reward clamped into `[0, 1]`. That is separate from the task grader score produced by the environment at episode end.
 
+## Baseline Scores
+
+Reproducible grader scores with `seed=42` on the default claim counts per task.
+
+| Task | Difficulty | Claims | Oracle | Random | Qwen2.5-72B Agent |
+|------|------------|--------|--------|--------|--------------------|
+| 1 — `routine_triage` | Easy | 20 | 1.000 | 0.312 | 0.447 |
+| 2 — `multi_hospital_triage` | Medium | 30 | 1.000 | 0.374 | 0.519 |
+| 3 — `full_complexity` | Hard | 50 | 1.000 | 0.057 | 0.113 |
+
+**Oracle** uses the ground-truth routing decision for every claim — the theoretical maximum.
+**Random** picks uniformly from the 6 possible decisions (`seed=12345`).
+**Qwen2.5-72B** is the LLM baseline agent from `inference.py` using `Qwen/Qwen2.5-72B-Instruct` via Hugging Face inference.
+
+The scores confirm that the graders meaningfully separate agent quality: oracle achieves near-perfect scores, random performs poorly (especially on Task 3 where the urgency multiplier penalizes low SLA compliance), and the LLM agent lands in between with room for improvement through RL fine-tuning.
+
+To reproduce:
+
+```bash
+# Oracle + Random (no server needed)
+python baseline_scores.py
+
+# LLM agent (requires running server + HF API key)
+uvicorn server.app:app --host 0.0.0.0 --port 7860   # terminal 1
+python inference.py --easy                             # terminal 2
+python inference.py --medium
+python inference.py --hard
+```
+
 ## Repository Layout
 
 ```text

@@ -27,7 +27,8 @@ from .tasks import TASKS, TaskConfig, GRADERS, grade_task3
 
 class ClaimWatchEnv(Environment):
     """OpenEnv-compliant RL environment for insurance claims triage."""
-
+    SUPPORTS_CONCURRENT_SESSIONS = True 
+    
     def __init__(self) -> None:
         super().__init__()
         self._task_config: Optional[TaskConfig] = None
