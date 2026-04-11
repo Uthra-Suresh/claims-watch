@@ -336,7 +336,7 @@ To reproduce:
 python baseline_scores.py
 
 # LLM agent (requires running server + HF API key)
-uvicorn server.app:app --host 0.0.0.0 --port 7860   # terminal 1
+uvicorn server.app:app --host 0.0.0.0 --port 8000   # terminal 1
 python inference.py --easy                             # terminal 2
 python inference.py --medium
 python inference.py --hard
