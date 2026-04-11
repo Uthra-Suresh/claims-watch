@@ -4,7 +4,7 @@ emoji: "🏥"
 colorFrom: blue
 colorTo: green
 sdk: docker
-app_port: 7860
+app_port: 8000
 tags:
   - openenv
 pinned: false
@@ -15,6 +15,54 @@ short_description: RL environment for insurance claims triage
 # ClaimWatch
 
 ClaimWatch is an OpenEnv-compatible reinforcement learning environment for insurance claims triage. It models the operational problem faced by payers and utilization-management teams: every claim is a routing decision under time pressure, reviewer capacity constraints, documentation uncertainty, fraud risk, and changing policy rules.
+
+## Quick Start
+
+### Using the Client SDK (Recommended)
+
+Async:
+
+```python
+from client import ClaimWatchClient
+from env.models import ClaimAction
+
+async with ClaimWatchClient(base_url="http://localhost:8000") as env:
+    result = await env.reset(task_id=1, seed=42)
+    obs = result.observation
+    print(f"Queue: {len(obs.queue)} claims")
+
+    result = await env.step(ClaimAction(
+        claim_id=obs.queue[0].claim_id,
+        decision="auto_approve",
+    ))
+    print(f"Reward: {result.reward}, Done: {result.done}")
+```
+
+Sync:
+
+```python
+with ClaimWatchClient(base_url="http://localhost:8000").sync() as env:
+    result = env.reset(task_id=1, seed=42)
+    result = env.step(ClaimAction(
+        claim_id=result.observation.queue[0].claim_id,
+        decision="clinical_review",
+    ))
+    print(result.observation.queue)
+```
+
+### Using HTTP Directly
+
+```bash
+curl -X POST http://localhost:8000/reset \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": 1, "seed": 42}'
+
+curl -X POST http://localhost:8000/step \
+  -H "Content-Type: application/json" \
+  -d '{"claim_id": "CLM-42-00001", "decision": "clinical_review"}'
+
+curl http://localhost:8000/state
+```
 
 ## Industry Problem
 
@@ -44,20 +92,20 @@ RL is the right tool here because the environment has:
 
 In other words, the agent needs a policy, not just a prediction. ClaimWatch is designed to benchmark exactly that.
 
-## How ClaimWatch Solves It
+## Current Architecture
 
-ClaimWatch turns claims triage into a measurable control problem.
+Main modules:
 
-- State: the agent sees the live queue, SLA remaining time, billed amount, documentation, resource availability, policy state, and current episode progress.
-- Actions: the agent chooses one of six routing decisions for the current claim.
-- Rewards: the agent gets dense feedback for correct routing, fraud catches, SLA success, and penalties for false denials, missed fraud, unnecessary reviews, and other routing errors.
-- Evaluation: task-specific graders score performance in `[0, 1]` using routing accuracy, SLA compliance, fraud detection, false denial rate, and unnecessary review rate.
-
-The environment deliberately escalates from simple routing to harder operating conditions:
-
-- Task 1: stable policy, high capacity, routine triage
-- Task 2: more hospitals, tighter review capacity, mid-episode policy update
-- Task 3: high complexity, low capacity, stronger fraud pressure, urgency-sensitive grading
+- [client.py](client.py): Remote async OpenEnv client (`ClaimWatchClient`)
+- [env/claim_env.py](env/claim_env.py): Core RL environment (`ClaimWatchEnv`)
+- [env/models.py](env/models.py): Pydantic v2 models for actions, observations, state
+- [env/generator.py](env/generator.py): Seeded claim batch generator
+- [env/reward.py](env/reward.py): Decomposed per-step reward computation
+- [env/tasks.py](env/tasks.py): Task configurations and grader functions
+- [env/policies.py](env/policies.py): Payer policies and procedure rules
+- [rubrics.py](rubrics.py): Rubric-based rewards (OpenEnv RFC 004)
+- [server/app.py](server/app.py): OpenEnv HTTP server app and env factory
+- [inference.py](inference.py): Baseline LLM agent
 
 ## Environment Design
 
@@ -181,68 +229,46 @@ urgency_multiplier = 1.0 if sla_compliance_rate >= 0.70 else sla_compliance_rate
 score = clamp(raw * urgency_multiplier)
 ```
 
-## API And Interaction Model
+## Rewards (Rubric System — RFC 004)
 
-ClaimWatch is served through OpenEnv's generated FastAPI application.
+ClaimWatch supports the OpenEnv Rubric system for composable, swappable rewards suitable for RL training (GRPO, PPO, etc.):
 
-### HTTP Endpoints
+```python
+from rubrics import ClaimWatchRubric, RoutingAccuracyRubric
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| `POST` | `/reset` | Start a new episode |
-| `POST` | `/step` | Submit one action |
-| `GET` | `/state` | Inspect current environment state |
-| `GET` | `/schema` | Retrieve action, observation, and state schemas |
-| `GET` | `/metadata` | Retrieve environment metadata |
-| `GET` | `/health` | Health check |
-| `GET` | `/docs` | Swagger UI |
-| `GET` | `/redoc` | ReDoc |
+# Default composite rubric
+rubric = ClaimWatchRubric()
+reward = rubric.forward(action, observation)
 
-### Persistent Agent Sessions
-
-For automated multi-step agents, prefer the WebSocket endpoint at `/ws`. The current baseline agent in `inference.py` uses that path so the episode state stays consistent across steps.
-
-### Correct HTTP Payload Shapes
-
-Reset accepts extra environment-specific fields such as `task_id` and `n_claims`.
-
-```bash
-curl -X POST http://localhost:7860/reset \
-  -H "Content-Type: application/json" \
-  -d '{"task_id": 1, "seed": 42}'
+# Custom rubric with partial credit
+rubric = ClaimWatchRubric(
+    outcome=RoutingAccuracyRubric(partial_credit=True),
+    fraud_weight=0.3,
+)
 ```
 
-Step requests must wrap the action inside an `action` object:
-
-```bash
-curl -X POST http://localhost:7860/step \
-  -H "Content-Type: application/json" \
-  -d '{"action": {"claim_id": "CLM-42-00001", "decision": "clinical_review"}}'
-```
-
-Read the current state:
-
-```bash
-curl http://localhost:7860/state
-```
+Available rubric classes:
+- `RoutingAccuracyRubric` — Outcome rubric: 1.0 for correct routing, optional 0.5 for adjacent decisions
+- `SLAComplianceRubric` — Process rubric: +0.10 for on-time processing, -0.15 for SLA misses
+- `FraudDetectionRubric` — Outcome rubric: +0.45 for correct fraud flags, -0.35 for missed fraud
+- `ClaimWatchRubric` — Composite rubric combining all the above with configurable weights
+- `CustomMetricRubric` — User-provided `metric(expected, predicted) -> float`
 
 ## Run Locally
 
 ### Python
 
-Use the same interpreter for install and execution. On Windows, the project-local environment is typically `envs\\Scripts\\python.exe`.
-
 ```bash
-python -m venv envs
-envs\Scripts\python -m pip install -r requirements.txt
-envs\Scripts\python -m uvicorn server.app:app --host 0.0.0.0 --port 7860
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements.txt
+.venv/Scripts/python -m uvicorn server.app:app --host 0.0.0.0 --port 8000
 ```
 
 ### Docker
 
 ```bash
 docker build -t claimwatch .
-docker run -p 7860:7860 claimwatch
+docker run -p 8000:8000 claimwatch
 ```
 
 ## Run The Baseline Agent
@@ -255,7 +281,7 @@ Example environment variables:
 export API_BASE_URL="https://router.huggingface.co/v1"
 export MODEL_NAME="Qwen/Qwen2.5-72B-Instruct"
 export HF_TOKEN="hf_your_token_here"
-export ENV_BASE_URL="http://localhost:7860"
+export ENV_BASE_URL="http://localhost:8000"
 ```
 
 Example runs:
@@ -287,22 +313,52 @@ Expected log shape:
 
 Note: the baseline script currently reports `score` as average per-step reward clamped into `[0, 1]`. That is separate from the task grader score produced by the environment at episode end.
 
+## Baseline Scores
+
+Reproducible grader scores with `seed=42` on the default claim counts per task.
+
+| Task | Difficulty | Claims | Oracle | Random | Qwen2.5-72B Agent |
+|------|------------|--------|--------|--------|--------------------|
+| 1 — `routine_triage` | Easy | 20 | 1.000 | 0.312 | 0.447 |
+| 2 — `multi_hospital_triage` | Medium | 30 | 1.000 | 0.374 | 0.519 |
+| 3 — `full_complexity` | Hard | 50 | 1.000 | 0.057 | 0.113 |
+
+**Oracle** uses the ground-truth routing decision for every claim — the theoretical maximum.
+**Random** picks uniformly from the 6 possible decisions (`seed=12345`).
+**Qwen2.5-72B** is the LLM baseline agent from `inference.py` using `Qwen/Qwen2.5-72B-Instruct` via Hugging Face inference.
+
+The scores confirm that the graders meaningfully separate agent quality: oracle achieves near-perfect scores, random performs poorly (especially on Task 3 where the urgency multiplier penalizes low SLA compliance), and the LLM agent lands in between with room for improvement through RL fine-tuning.
+
+To reproduce:
+
+```bash
+# Oracle + Random (no server needed)
+python baseline_scores.py
+
+# LLM agent (requires running server + HF API key)
+uvicorn server.app:app --host 0.0.0.0 --port 8000   # terminal 1
+python inference.py --easy                             # terminal 2
+python inference.py --medium
+python inference.py --hard
+```
+
 ## Repository Layout
 
 ```text
 claimwatch/
+|- client.py             ← OpenEnv client (ClaimWatchClient)
+|- rubrics.py            ← Rubric system (RFC 004)
 |- env/
-|  |- models.py
-|  |- policies.py
-|  |- generator.py
-|  |- reward.py
-|  |- tasks.py
-|  `- claim_env.py
+|  |- models.py          ← Pydantic v2 models
+|  |- policies.py        ← Payer policies and procedure rules
+|  |- generator.py       ← Seeded claim batch generator
+|  |- reward.py          ← Per-step reward computation
+|  |- tasks.py           ← Task configs and grader functions
+|  `- claim_env.py       ← Core RL environment
 |- server/
-|  `- app.py
-|- inference.py
-|- openenv.yaml
+|  `- app.py             ← OpenEnv HTTP server
+|- inference.py           ← Baseline LLM agent
+|- openenv.yaml           ← OpenEnv spec config
 |- Dockerfile
 `- requirements.txt
 ```
-

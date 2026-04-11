@@ -1,5 +1,6 @@
-﻿
-"""ClaimWatch inference agent sample code.s
+
+"""ClaimWatch inference agent.
+
 STDOUT FORMAT
     [START] task=<task_id> env=<benchmark> model=<model_name>
     [STEP]  step=<n> action=<decision>(claim=<id>) reward=<0.00> done=<true|false> error=<msg|null>
@@ -20,6 +21,10 @@ from urllib.parse import urlparse
 from openai import OpenAI
 
 import requests
+
+from env.tasks import TASKS, grade_task1, grade_task2, grade_task3, GRADERS
+from env.generator import generate_claims
+from env.models import RoutingDecision
 
 load_dotenv()
 
@@ -50,7 +55,7 @@ API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("API_KEY", "")
 
-ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:7860")
+ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
 BENCHMARK = "claimwatch"
 
 # ── Runtime flags (set by parse_args) ────────────────────────────────────────
@@ -131,7 +136,7 @@ def env_connect() -> websocket.WebSocket:
     """Open a persistent WebSocket session to the environment."""
     ws_url = build_ws_url(ENV_BASE_URL)
     debug(f"Connecting to environment WebSocket: {ws_url}")
-    return websocket.create_connection(ws_url, timeout=30)
+    return websocket.create_connection(ws_url, timeout=120)
 
 
 def _ws_send_and_receive(session: websocket.WebSocket, message: Dict[str, Any]) -> Dict[str, Any]:
@@ -220,37 +225,6 @@ def env_close(session: Optional[websocket.WebSocket]) -> None:
         session.close()
     except Exception:
         pass
-# ── HTTP helpers ─────────────────────────────────────────────────────────────
-
-# def env_reset(task_id: int = 1, seed: int = 42, n_claims: Optional[int] = None) -> Dict[str, Any]:
-#     """POST /reset to the environment."""
-#     body: Dict[str, Any] = {"task_id": task_id, "seed": seed}
-#     if n_claims is not None:
-#         body["n_claims"] = n_claims
-#     resp = requests.post(f"{ENV_BASE_URL}/reset", json=body, timeout=30)
-#     resp.raise_for_status()
-#     return resp.json()
-
-# def env_step(claim_id: str, decision: str, rationale: str = "") -> Dict[str, Any]:
-#     """POST /step to the environment."""
-#     resp = requests.post(
-#             f"{ENV_BASE_URL}/step",
-#         json={
-#             # "action": {
-#                 "claim_id": claim_id,
-#                 "decision": decision,
-#                 "rationale": rationale,
-#             # }
-#         },
-#         timeout=30,
-#     )
-#     if resp.status_code == 422:
-#         raise requests.HTTPError(
-#             f"422 Unprocessable Entity for {resp.url}: {resp.text}",
-#             response=resp,
-#         )
-#     resp.raise_for_status()
-#     return resp.json()
 
 
 # ── Observation helpers ───────────────────────────────────────────────────────
@@ -295,7 +269,7 @@ def normalize_env_base_url(raw_url: str) -> str:
     """Normalize common ENV_BASE_URL mistakes into a valid base URL."""
     candidate = (raw_url or "").strip()
     if not candidate:
-        return "http://localhost:7860"
+        return "http://localhost:8000"
 
     if "lllocalhost" in candidate.lower():
         candidate = candidate.replace("lllocalhost", "localhost")
@@ -504,6 +478,7 @@ def run_task(client: OpenAI, task_id: int, n_claims: Optional[int] = None) -> Di
         max_steps = int(total_claims) if total_claims else len(obs.get("queue", []))
 
         rewards: List[float] = []
+        agent_decisions: Dict[str, str] = {}
         step_count = 0
         completed_episode = False
 
@@ -545,12 +520,16 @@ def run_task(client: OpenAI, task_id: int, n_claims: Optional[int] = None) -> Di
                 reward_val = get_reward(result, obs)
                 done = get_done(result, obs)
                 rewards.append(reward_val)
+                agent_decisions[claim_id] = decision
                 step_count = n
 
                 log_step(n, decision, claim_id, reward_val, done, step_error)
 
                 if done:
                     completed_episode = True
+                    debug(f"DONE result keys: {list(result.keys())}")
+                    debug(f"DONE result: {json.dumps(result, indent=2, default=str)[:2000]}")
+                    debug(f"DONE obs keys: {list(obs.keys())}")
                     break
 
             except Exception as e:
@@ -558,6 +537,9 @@ def run_task(client: OpenAI, task_id: int, n_claims: Optional[int] = None) -> Di
                 log_step(n, decision, claim_id, 0.0, False, step_error)
                 rewards.append(0.0)
                 step_count = n
+                if "closed" in str(e).lower() or "broken" in str(e).lower():
+                    log(f"  WebSocket connection lost at step {n}, aborting task")
+                    break
         else:
             # Loop exhausted max_steps without done signal
             log(f"  WARNING: reached max_steps={max_steps} without done signal")
@@ -565,6 +547,23 @@ def run_task(client: OpenAI, task_id: int, n_claims: Optional[int] = None) -> Di
         final_score = sum(rewards) / len(rewards) if rewards else 0.0
         final_score = max(0.0, min(1.0, final_score))
         success = completed_episode
+
+        # Compute grader score client-side since WebSocket strips metadata
+        try:
+            cfg = TASKS[task_id]
+            grader_claims = generate_claims(
+                n=cfg.n_claims, seed=cfg.seed, fraud_rate=cfg.fraud_rate
+            )
+            decision_map = {
+                cid: RoutingDecision(dec) for cid, dec in agent_decisions.items()
+            }
+            grader_fn = GRADERS.get(task_id)
+            if grader_fn:
+                grader_result = grader_fn(grader_claims, decision_map)
+                debug(f"  GRADER score: {grader_result['score']:.3f}")
+                final_score = grader_result['score']
+        except Exception as e:
+            debug(f"Client-side grader failed: {e}")
 
         log_end(success, step_count, final_score, rewards)
         return {"task_id": task_id, "score": final_score, "steps": step_count, "success": success}
@@ -593,7 +592,7 @@ def main() -> None:
     if args.debug:
         DEBUG = True
 
-    # ENV_BASE_URL = normalize_env_base_url(ENV_BASE_URL)
+    ENV_BASE_URL = normalize_env_base_url(ENV_BASE_URL)
 
     task_ids: List[int] = []
     if args.easy:
@@ -630,4 +629,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
