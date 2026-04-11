@@ -28,6 +28,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY env/ ./env/
 COPY server/ ./server/
+COPY client.py .
+COPY rubrics.py .
 COPY inference.py .
 COPY openenv.yaml .
 COPY gradio_readme.md .
@@ -39,6 +41,8 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/env ./env/
 COPY --from=builder /app/server ./server/
+COPY --from=builder /app/client.py .
+COPY --from=builder /app/rubrics.py .
 COPY --from=builder /app/inference.py .
 COPY --from=builder /app/openenv.yaml .
 COPY --from=builder /app/gradio_readme.md ./README.md
@@ -49,9 +53,9 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app:$PYTHONPATH"
 ENV ENABLE_WEB_INTERFACE=true
 
-EXPOSE 7860
+EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:7860/health || exit 1
+  CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["sh", "-c", "uvicorn server.app:app --host 0.0.0.0 --port 7860"]
+CMD ["sh", "-c", "uvicorn server.app:app --host 0.0.0.0 --port 8000"]
