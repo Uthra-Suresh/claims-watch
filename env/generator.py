@@ -5,7 +5,7 @@ from __future__ import annotations
 import random as _random_module
 from typing import List
 
-from .models import Claim, RoutingDecision, SLATier, SLA_HOURS
+from models import Claim, RoutingDecision, SLATier, SLA_HOURS
 from .policies import (
     ALL_DOC_TYPES,
     PROCEDURE_RULES,

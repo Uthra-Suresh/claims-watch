@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .models import Claim, Reward, RoutingDecision, SLA_HOURS
+from models import Claim, Reward, RoutingDecision, SLA_HOURS
 
 
 def compute_reward(

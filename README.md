@@ -24,7 +24,7 @@ Async:
 
 ```python
 from client import ClaimWatchClient
-from env.models import ClaimAction
+from models import ClaimAction
 
 async with ClaimWatchClient(base_url="http://localhost:8000") as env:
     result = await env.reset(task_id=1, seed=42)

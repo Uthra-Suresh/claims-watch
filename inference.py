@@ -24,7 +24,7 @@ import requests
 
 from env.tasks import TASKS, grade_task1, grade_task2, grade_task3, GRADERS
 from env.generator import generate_claims
-from env.models import RoutingDecision
+from models import RoutingDecision
 
 load_dotenv()
 

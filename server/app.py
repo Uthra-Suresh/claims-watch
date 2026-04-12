@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from openenv.core.env_server.http_server import create_app
 
 from env.claim_env import ClaimWatchEnv
-from env.models import ClaimAction, ClaimObservation, Reward, RoutingDecision
+from models import ClaimAction, ClaimObservation, Reward, RoutingDecision
 
 
 DESCRIPTION = """
