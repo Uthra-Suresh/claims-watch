@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List
 
-from .models import Claim, RoutingDecision, SLATier, SLA_HOURS
+from models import Claim, RoutingDecision, SLATier, SLA_HOURS
 
 
 # ── TaskConfig ───────────────────────────────────────────────────────────────

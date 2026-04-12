@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 import traceback
 
-from env.models import Action, Claim, Observation, Reward, RoutingDecision, SLATier, SLA_HOURS
+from models import Action, Claim, Observation, Reward, RoutingDecision, SLATier, SLA_HOURS
 from env.claim_env import ClaimWatchEnv
 from env.generator import generate_claims
 from env.reward import compute_reward

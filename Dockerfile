@@ -31,6 +31,7 @@ COPY server/ ./server/
 COPY client.py .
 COPY rubrics.py .
 COPY inference.py .
+COPY models.py .
 COPY openenv.yaml .
 COPY gradio_readme.md .
 
@@ -44,6 +45,7 @@ COPY --from=builder /app/server ./server/
 COPY --from=builder /app/client.py .
 COPY --from=builder /app/rubrics.py .
 COPY --from=builder /app/inference.py .
+COPY --from=builder /app/models.py .
 COPY --from=builder /app/openenv.yaml .
 COPY --from=builder /app/gradio_readme.md ./README.md
 

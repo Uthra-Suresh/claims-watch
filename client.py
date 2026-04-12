@@ -35,7 +35,7 @@ from typing import Any, Dict, List, Optional
 
 from openenv.core.env_client import EnvClient, StepResult
 
-from env.models import (
+from models import (
     ClaimAction,
     ClaimObservation,
     ClaimSnapshot,

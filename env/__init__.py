@@ -1,6 +1,6 @@
 """ClaimWatch environment package."""
 
-from .models import (
+from models import (
     ClaimAction,
     ClaimObservation,
     ClaimState,

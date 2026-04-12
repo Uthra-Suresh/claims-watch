@@ -1,7 +1,7 @@
 # baseline_scores.py
 from env.generator import generate_claims
 from env.tasks import TASKS, grade_task1, grade_task2, grade_task3
-from env.models import RoutingDecision
+from models import RoutingDecision
 import random
 
 GRADERS = {1: grade_task1, 2: grade_task2, 3: grade_task3}

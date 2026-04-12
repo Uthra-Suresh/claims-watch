@@ -6,7 +6,7 @@ import random as _random_module
 from typing import Any, Dict, List, Optional
 from openenv.core.env_server.interfaces import Environment
 
-from .models import (
+from models import (
     ClaimAction,
     Claim,
     ClaimSnapshot,
